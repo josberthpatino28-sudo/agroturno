@@ -1,0 +1,208 @@
+openapi: 3.0.3
+info:
+  title: API AgroTurno
+  version: 1.0.0
+  description: >
+    API REST para la reserva de maquinaria agrícola compartida de la asociación
+    de productores de Mosquera. Permite consultar el catálogo, reservar sin cruces
+    de horario y cancelar reservas.
+servers:
+  - url: http://localhost:3000/api
+tags:
+  - name: Autenticación
+  - name: Máquinas
+  - name: Reservas
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string, example: La máquina ya está reservada en ese horario }
+    Usuario:
+      type: object
+      properties:
+        id: { type: integer, example: 2 }
+        nombre: { type: string, example: Productor de prueba }
+        correo: { type: string, example: productor@agroturno.co }
+        rol: { type: string, enum: [productor, administrador] }
+    Sesion:
+      type: object
+      properties:
+        usuario: { $ref: '#/components/schemas/Usuario' }
+        token: { type: string, example: eyJhbGciOiJIUzI1NiIs... }
+    Maquina:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        nombre: { type: string, example: Tractor John Deere 5075E }
+        tipo: { type: string, example: Tractor }
+        tarifa_hora: { type: number, example: 85000 }
+        estado: { type: string, enum: [disponible, mantenimiento] }
+    MaquinaEntrada:
+      type: object
+      required: [nombre, tipo, tarifa_hora]
+      properties:
+        nombre: { type: string }
+        tipo: { type: string }
+        tarifa_hora: { type: number, minimum: 0 }
+        estado: { type: string, enum: [disponible, mantenimiento] }
+    Reserva:
+      type: object
+      properties:
+        id: { type: integer }
+        usuario_id: { type: integer }
+        maquina_id: { type: integer }
+        maquina: { type: string }
+        productor: { type: string }
+        inicio: { type: string, format: date-time }
+        fin: { type: string, format: date-time }
+        valor: { type: number, example: 340000 }
+        estado: { type: string, enum: [activa, cancelada] }
+    ReservaEntrada:
+      type: object
+      required: [maquina_id, inicio, fin]
+      properties:
+        maquina_id: { type: integer, example: 1 }
+        inicio: { type: string, format: date-time, example: '2026-12-01T07:00:00-05:00' }
+        fin: { type: string, format: date-time, example: '2026-12-01T11:00:00-05:00' }
+  responses:
+    NoAutenticado:
+      description: Falta el token o es inválido
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    SinPermiso:
+      description: El rol del usuario no permite la acción
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NoEncontrado:
+      description: El recurso no existe
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+paths:
+  /auth/registro:
+    post:
+      tags: [Autenticación]
+      summary: Registrar un productor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre, correo, contrasena]
+              properties:
+                nombre: { type: string }
+                correo: { type: string, format: email }
+                contrasena: { type: string, minLength: 8 }
+      responses:
+        '201': { description: Usuario creado, content: { application/json: { schema: { $ref: '#/components/schemas/Sesion' } } } }
+        '400': { description: Datos incompletos }
+        '409': { description: El correo ya existe }
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      summary: Iniciar sesión y obtener un token JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [correo, contrasena]
+              properties:
+                correo: { type: string, example: admin@agroturno.co }
+                contrasena: { type: string, example: Admin2026* }
+      responses:
+        '200': { description: Sesión iniciada, content: { application/json: { schema: { $ref: '#/components/schemas/Sesion' } } } }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+  /maquinas:
+    get:
+      tags: [Máquinas]
+      summary: Listar el catálogo de maquinaria
+      responses:
+        '200':
+          description: Lista de máquinas
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Maquina' } }
+    post:
+      tags: [Máquinas]
+      summary: Registrar una máquina (administrador)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MaquinaEntrada' } } }
+      responses:
+        '201': { description: Máquina creada, content: { application/json: { schema: { $ref: '#/components/schemas/Maquina' } } } }
+        '400': { description: Datos inválidos }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+  /maquinas/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Máquinas]
+      summary: Consultar una máquina
+      responses:
+        '200': { description: Máquina, content: { application/json: { schema: { $ref: '#/components/schemas/Maquina' } } } }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+    put:
+      tags: [Máquinas]
+      summary: Actualizar una máquina (administrador)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MaquinaEntrada' } } }
+      responses:
+        '200': { description: Máquina actualizada }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+    delete:
+      tags: [Máquinas]
+      summary: Eliminar una máquina sin reservas (administrador)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { description: Eliminada }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '409': { description: Tiene reservas asociadas }
+  /reservas:
+    get:
+      tags: [Reservas]
+      summary: Listar reservas (las propias, o todas si es administrador)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Lista de reservas
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Reserva' } }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+    post:
+      tags: [Reservas]
+      summary: Crear una reserva (valida cruces de horario y calcula el valor)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReservaEntrada' } } }
+      responses:
+        '201': { description: Reserva creada, content: { application/json: { schema: { $ref: '#/components/schemas/Reserva' } } } }
+        '400': { description: Fechas inválidas }
+        '401': { $ref: '#/components/responses/NoAutenticado' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }
+        '409':
+          description: Cruce de horario o máquina en mantenimiento
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  /reservas/{id}/cancelar:
+    patch:
+      tags: [Reservas]
+      summary: Cancelar una reserva
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: Reserva cancelada }
+        '403': { $ref: '#/components/responses/SinPermiso' }
+        '404': { $ref: '#/components/responses/NoEncontrado' }

@@ -1,0 +1,37 @@
+# Despliegue completo de AgroTurno con Docker Compose:
+#   docker compose up -d --build
+# Luego abrir http://localhost (frontend) y http://localhost/api/docs (Swagger).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agroturno
+      POSTGRES_PASSWORD: agroturno
+      POSTGRES_DB: agroturno
+    volumes:
+      - datos_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agroturno"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://agroturno:agroturno@db:5432/agroturno
+      JWT_SECRET: ${JWT_SECRET:-cambie-esta-clave}
+      CORS_ORIGIN: http://localhost
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+
+volumes:
+  datos_pg:
